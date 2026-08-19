@@ -1,0 +1,23 @@
+{
+  "id": "com.safelight.hierarchical-keywording",
+  "name": "Hierarchical Keywording",
+  "version": "1.0.0",
+  "description": "Lightroom-class hierarchical keywords for your library. Organize keywords in a tree with synonyms and per-keyword export flags, apply them with autocomplete, checkboxes, or drag-and-drop, and filter the grid by any branch (children included). Exchange complete keyword lists with Lightroom via .txt import/export, and let existing hierarchies build themselves from XMP sidecars on import.",
+  "author": "Anthony Reimche <anthonyreimche@gmail.com>",
+  "main": "index.js",
+  "categories": ["Library", "Workflow"],
+  "keywords": [
+    "keywords",
+    "hierarchical keywords",
+    "keyword tree",
+    "tags",
+    "tagging",
+    "controlled vocabulary",
+    "synonyms",
+    "lightroom",
+    "dam",
+    "metadata"
+  ],
+  "license": "MIT",
+  "minAppVersion": "2.5.1"
+}
