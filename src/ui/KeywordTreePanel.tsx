@@ -10,7 +10,7 @@ import { createNode, indexTree, type KeywordNode } from "../model/tree.ts";
 import {
   addRootKeyword,
   applyPaths,
-  checkStateFor,
+  checkStateOf,
   clearFilter,
   createChild,
   exportLrText,
@@ -20,6 +20,7 @@ import {
   removeFromTargets,
   setEditing,
   targetIds,
+  targetKeyCounts,
   toggleFilterKey,
 } from "../store";
 import { EntryField, type Notice } from "./EntryField.tsx";
@@ -43,6 +44,7 @@ export function KeywordTreePanel(): ReactElement {
   const editingKey = kw((s) => s.editingKey);
   const targets = useTargetPhotos();
   const counts = useKeywordCounts();
+  const targetCounts = React.useMemo(() => targetKeyCounts(targets), [targets]);
 
   const [notice, setNotice] = React.useState<Notice | null>(null);
   const [search, setSearch] = React.useState("");
@@ -250,7 +252,7 @@ export function KeywordTreePanel(): ReactElement {
                   data={data}
                   hasChildren={hasChildren}
                   expanded={isExpanded}
-                  checkState={checkStateFor(data.key, targets)}
+                  checkState={checkStateOf(targetCounts.get(data.key) ?? 0, targets.length)}
                   count={counts.get(data.key)?.count ?? 0}
                   deepCount={deepCounts.get(data.key) ?? 0}
                   filterActive={filterKeys.includes(data.key)}
@@ -301,7 +303,7 @@ export function KeywordTreePanel(): ReactElement {
                 data={{ node: createNode(display), key, depth: 0, path: [display] }}
                 hasChildren={false}
                 expanded={false}
-                checkState={checkStateFor(key, targets)}
+                checkState={checkStateOf(targetCounts.get(key) ?? 0, targets.length)}
                 count={count}
                 deepCount={count}
                 filterActive={filterKeys.includes(key)}
@@ -337,7 +339,7 @@ export function KeywordTreePanel(): ReactElement {
             <ui.Button
               variant="ghost"
               size="sm"
-              title="Export the tree as a Lightroom keyword list"
+              title="Export the tree as a Lightroom keyword list (.txt)"
               onClick={onExport}
             >
               Export

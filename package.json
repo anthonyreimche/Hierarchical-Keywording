@@ -7,7 +7,7 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "install-local": "node scripts/install.mjs",
-    "test": "node --experimental-strip-types src/model/tree.test.ts && node --experimental-strip-types src/model/paths.test.ts && node --experimental-strip-types src/model/lr-text.test.ts && node --experimental-strip-types src/model/xmp-learn.test.ts",
+    "test": "node --experimental-strip-types src/model/tree.test.ts && node --experimental-strip-types src/model/paths.test.ts && node --experimental-strip-types src/model/lr-text.test.ts && node --experimental-strip-types src/model/xmp-learn.test.ts && node --experimental-strip-types src/store.test.ts",
     "smoke": "node scripts/build.mjs && node smoke.mjs",
     "typecheck": "tsc --noEmit"
   },

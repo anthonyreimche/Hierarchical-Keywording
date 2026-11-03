@@ -44,6 +44,6 @@ npm run typecheck
 
 Single-file ESM bundle, classic-JSX against the app's React (`api.react`), inline styles over `api.ui` primitives and tokens. The tree persists via extension settings and syncs across windows; photo keyword writes go through the core catalog store, so sidecar writers and the catalog file stay in step.
 
-## License
+## Licence
 
 MIT

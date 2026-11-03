@@ -106,7 +106,7 @@ export function activate(api: SafelightAPI): void {
       {
         key: SETTING_TAG_ANCESTORS,
         label: "Also tag ancestor keywords on photos",
-        hint: "Applying \"Eagle\" under Animals > Birds writes all three keywords onto the photo. Keeps full hierarchy visible to apps that only read flat keywords; off matches Lightroom, which implies parents instead.",
+        hint: "Applying \"Eagle\" under Animals > Birds writes all three keywords onto the photo. Keeps the full hierarchy visible to apps that only read flat keywords; when off, parents stay implied by the tree.",
         type: "boolean",
         default: false,
       },

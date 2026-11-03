@@ -3,9 +3,9 @@
 // writes go through the core catalog store's addKeywords/removeKeywords — the
 // only durable path, and the one that notifies sidecar writers (XMP Tools).
 
-import { api } from "./runtime";
+import { api } from "./runtime.ts";
 import type { StoreHook } from "./safelight";
-import { keyOf } from "./model/names.ts";
+import { keyOf, normalizeKeywordName } from "./model/names.ts";
 import {
   closureNameSet,
   collectNames,
@@ -196,13 +196,31 @@ export async function applyPaths(paths: string[][], ids: string[] = targetIds())
 
 export type CheckState = "on" | "mixed" | "off";
 
+export function checkStateOf(have: number, total: number): CheckState {
+  return have === 0 || total === 0 ? "off" : have === total ? "on" : "mixed";
+}
+
+/** keyword key → how many of `photos` carry it, each photo counted once. */
+export function targetKeyCounts(photos: { keywords: string[] }[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const photo of photos) {
+    const seen = new Set<string>();
+    for (const stored of photo.keywords) {
+      const key = keyOf(stored);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+  }
+  return counts;
+}
+
 export function checkStateFor(key: string, photos: { keywords: string[] }[]): CheckState {
-  if (photos.length === 0) return "off";
   let have = 0;
   for (const photo of photos) {
     if (photo.keywords.some((k) => keyOf(k) === key)) have += 1;
   }
-  return have === 0 ? "off" : have === photos.length ? "on" : "mixed";
+  return checkStateOf(have, photos.length);
 }
 
 /** Checkbox click: all targets have it → remove everywhere; else complete it. */
@@ -210,7 +228,8 @@ export async function toggleOnTargets(key: string): Promise<void> {
   const ids = targetIds();
   if (ids.length === 0) return;
   const catalog = api.stores.useCatalogStore.getState();
-  const targets = catalog.photos.filter((p) => ids.includes(p.id));
+  const idSet = new Set(ids);
+  const targets = catalog.photos.filter((p) => idSet.has(p.id));
   const state = checkStateFor(key, targets);
 
   if (state === "on") {
@@ -258,20 +277,44 @@ export interface RenameOutcome {
   message: string | null;
 }
 
+/** Put back a tree snapshot taken before an edit whose photo write failed. */
+function restoreTree(snapshot: KeywordNode[]): void {
+  kw.setState({ roots: snapshot });
+  persistTree();
+  bump();
+}
+
 /** Rename the node and rewrite the keyword on every photo that carries it. */
 export async function renameNodeAction(key: string, newName: string): Promise<RenameOutcome> {
   const { roots } = kw.getState();
   const before = occurrences(new Set([key]));
+  const oldName = indexTree(roots).get(key)?.node.name ?? key;
+  const snapshot = structuredClone(roots);
   const res = renameNode(roots, key, newName);
 
   if (res.kind === "invalid") return { ok: false, message: res.reason };
   if (res.kind === "missing") return { ok: false, message: "Keyword no longer exists" };
 
-  const finalName = res.kind === "merged" ? res.into : indexTree(roots).get(keyOf(newName))?.node.name;
+  const finalName = res.kind === "merged" ? res.into : indexTree(roots).get(keyOf(normalizeKeywordName(newName)))?.node.name;
+  let warning: string | null = null;
   if (finalName && before.ids.length > 0) {
     const catalog = api.stores.useCatalogStore.getState();
-    await catalog.removeKeywords(before.ids, before.variants);
-    await catalog.addKeywords(before.ids, [finalName]);
+    // The new name goes on first, so no failure can leave a photo without the keyword.
+    try {
+      await catalog.addKeywords(before.ids, [finalName]);
+    } catch (err) {
+      restoreTree(snapshot);
+      return { ok: false, message: `Couldn't rename "${oldName}": ${String(err)}` };
+    }
+    // Core matches keywords exactly, so only spellings other than the final one go.
+    const stale = before.variants.filter((v) => v !== finalName);
+    if (stale.length > 0) {
+      try {
+        await catalog.removeKeywords(before.ids, stale);
+      } catch (err) {
+        warning = `Renamed to "${finalName}", but the old spelling may remain on some photos: ${String(err)}`;
+      }
+    }
   }
 
   const newKey = finalName ? keyOf(finalName) : key;
@@ -285,7 +328,7 @@ export async function renameNodeAction(key: string, newName: string): Promise<Re
   bump();
   return {
     ok: true,
-    message: res.kind === "merged" ? `Merged into "${res.into}"` : null,
+    message: warning ?? (res.kind === "merged" ? `Merged into "${res.into}"` : null),
   };
 }
 
@@ -302,15 +345,22 @@ export function previewDelete(key: string): DeletePreview {
   return { keywordCount: names.length, photoCount: occurrences(keys).ids.length };
 }
 
-/** Delete the subtree and strip its keywords from every photo carrying them. */
-export async function deleteNodeAction(key: string): Promise<void> {
+/** Delete the subtree and strip its keywords from every photo carrying them.
+ *  Resolves to a message when the photo write failed and the tree was kept. */
+export async function deleteNodeAction(key: string): Promise<string | null> {
   const { roots } = kw.getState();
+  const snapshot = structuredClone(roots);
   const names = removeSubtree(roots, key);
-  if (names.length === 0) return;
+  if (names.length === 0) return null;
   const keys = new Set(names.map(keyOf));
   const { ids, variants } = occurrences(keys);
   if (ids.length > 0) {
-    await api.stores.useCatalogStore.getState().removeKeywords(ids, variants);
+    try {
+      await api.stores.useCatalogStore.getState().removeKeywords(ids, variants);
+    } catch (err) {
+      restoreTree(snapshot);
+      return `Couldn't delete "${names[0]}": ${String(err)}`;
+    }
   }
   kw.setState((s) => ({
     filterKeys: s.filterKeys.filter((k) => !keys.has(k)),
@@ -320,6 +370,7 @@ export async function deleteNodeAction(key: string): Promise<void> {
   persistTree();
   persistPanelUi();
   bump();
+  return null;
 }
 
 export function moveNodeAction(key: string, newParentKey: string | null): boolean {
