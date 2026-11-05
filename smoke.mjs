@@ -28,7 +28,7 @@ function makeStore(init) {
   return hook;
 }
 
-// ── mocked catalog ───────────────────────────────────────────────────────────
+// ── mocked catalogue ───────────────────────────────────────────────────────────
 const calls = { addKeywords: [], removeKeywords: [], togglePanel: [] };
 const photos = [
   { id: "p1", filename: "IMG_1.NEF", relPath: "IMG_1.NEF", keywords: ["trip"] },

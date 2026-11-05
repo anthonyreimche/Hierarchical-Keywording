@@ -1,7 +1,7 @@
 {
   "name": "safelight-hierarchical-keywording",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Hierarchical keyword tree, tree-aware filtering, and Lightroom keyword-list interchange for SafeLight.",
   "type": "module",
   "scripts": {

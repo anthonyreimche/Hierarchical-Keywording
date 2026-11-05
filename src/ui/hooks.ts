@@ -1,5 +1,5 @@
 // Shared UI plumbing: selection targets (mirroring core's KeywordEditor
-// semantics), the catalog-wide keyword count index, and the entry-focus bus
+// semantics), the catalogue-wide keyword count index, and the entry-focus bus
 // that lets the grid menu / shortcut reach the panel's input across mounts.
 
 import { api, React } from "../runtime";
@@ -27,7 +27,7 @@ export interface KeywordCount {
   count: number;
 }
 
-/** keyword key → catalog-wide photo count (+ a display spelling seen on
+/** keyword key → catalogue-wide photo count (+ a display spelling seen on
  *  photos). Rebuilt only when the photos array identity changes. */
 export function useKeywordCounts(): Map<string, KeywordCount> {
   const photos = api.stores.useCatalogStore((s) => s.photos);

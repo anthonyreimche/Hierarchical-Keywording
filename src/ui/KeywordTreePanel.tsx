@@ -286,7 +286,7 @@ export function KeywordTreePanel(): ReactElement {
         {unfiled.length > 0 && (
           <div>
             <div
-              title="Keywords on photos in this catalog that aren't in your tree yet"
+              title="Keywords on photos in this catalogue that aren't in your tree yet"
               style={{
                 fontSize: 10,
                 textTransform: "uppercase",

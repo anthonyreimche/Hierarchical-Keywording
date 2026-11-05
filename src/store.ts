@@ -1,6 +1,6 @@
 // Extension state + every action the UI calls. The tree is mutated in place;
 // `revision` is the change signal components subscribe to. Photo keyword
-// writes go through the core catalog store's addKeywords/removeKeywords — the
+// writes go through the core catalogue store's addKeywords/removeKeywords — the
 // only durable path, and the one that notifies sidecar writers (XMP Tools).
 
 import { api } from "./runtime.ts";

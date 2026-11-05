@@ -484,18 +484,35 @@ async function applyPaths(paths, ids = targetIds()) {
 	bump();
 	return result;
 }
+function checkStateOf(have, total) {
+	return have === 0 || total === 0 ? "off" : have === total ? "on" : "mixed";
+}
+/** keyword key → how many of `photos` carry it, each photo counted once. */
+function targetKeyCounts(photos) {
+	const counts = /* @__PURE__ */ new Map();
+	for (const photo of photos) {
+		const seen = /* @__PURE__ */ new Set();
+		for (const stored of photo.keywords) {
+			const key = keyOf(stored);
+			if (seen.has(key)) continue;
+			seen.add(key);
+			counts.set(key, (counts.get(key) ?? 0) + 1);
+		}
+	}
+	return counts;
+}
 function checkStateFor(key, photos) {
-	if (photos.length === 0) return "off";
 	let have = 0;
 	for (const photo of photos) if (photo.keywords.some((k) => keyOf(k) === key)) have += 1;
-	return have === 0 ? "off" : have === photos.length ? "on" : "mixed";
+	return checkStateOf(have, photos.length);
 }
 /** Checkbox click: all targets have it → remove everywhere; else complete it. */
 async function toggleOnTargets(key) {
 	const ids = targetIds();
 	if (ids.length === 0) return;
 	const catalog = api.stores.useCatalogStore.getState();
-	const targets = catalog.photos.filter((p) => ids.includes(p.id));
+	const idSet = new Set(ids);
+	const targets = catalog.photos.filter((p) => idSet.has(p.id));
 	if (checkStateFor(key, targets) === "on") {
 		const variants = /* @__PURE__ */ new Set();
 		for (const photo of targets) for (const stored of photo.keywords) if (keyOf(stored) === key) variants.add(stored);
@@ -526,10 +543,18 @@ async function removeFromTargets(key) {
 	await api.stores.useCatalogStore.getState().removeKeywords(ids, [...variants]);
 	bump();
 }
+/** Put back a tree snapshot taken before an edit whose photo write failed. */
+function restoreTree(snapshot) {
+	kw.setState({ roots: snapshot });
+	persistTree();
+	bump();
+}
 /** Rename the node and rewrite the keyword on every photo that carries it. */
 async function renameNodeAction(key, newName) {
 	const { roots } = kw.getState();
 	const before = occurrences(/* @__PURE__ */ new Set([key]));
+	const oldName = indexTree(roots).get(key)?.node.name ?? key;
+	const snapshot = structuredClone(roots);
 	const res = renameNode(roots, key, newName);
 	if (res.kind === "invalid") return {
 		ok: false,
@@ -539,11 +564,25 @@ async function renameNodeAction(key, newName) {
 		ok: false,
 		message: "Keyword no longer exists"
 	};
-	const finalName = res.kind === "merged" ? res.into : indexTree(roots).get(keyOf(newName))?.node.name;
+	const finalName = res.kind === "merged" ? res.into : indexTree(roots).get(keyOf(normalizeKeywordName(newName)))?.node.name;
+	let warning = null;
 	if (finalName && before.ids.length > 0) {
 		const catalog = api.stores.useCatalogStore.getState();
-		await catalog.removeKeywords(before.ids, before.variants);
-		await catalog.addKeywords(before.ids, [finalName]);
+		try {
+			await catalog.addKeywords(before.ids, [finalName]);
+		} catch (err) {
+			restoreTree(snapshot);
+			return {
+				ok: false,
+				message: `Couldn't rename "${oldName}": ${String(err)}`
+			};
+		}
+		const stale = before.variants.filter((v) => v !== finalName);
+		if (stale.length > 0) try {
+			await catalog.removeKeywords(before.ids, stale);
+		} catch (err) {
+			warning = `Renamed to "${finalName}", but the old spelling may remain on some photos: ${String(err)}`;
+		}
 	}
 	const newKey = finalName ? keyOf(finalName) : key;
 	kw.setState((s) => ({
@@ -556,7 +595,7 @@ async function renameNodeAction(key, newName) {
 	bump();
 	return {
 		ok: true,
-		message: res.kind === "merged" ? `Merged into "${res.into}"` : null
+		message: warning ?? (res.kind === "merged" ? `Merged into "${res.into}"` : null)
 	};
 }
 function previewDelete(key) {
@@ -572,14 +611,21 @@ function previewDelete(key) {
 		photoCount: occurrences(keys).ids.length
 	};
 }
-/** Delete the subtree and strip its keywords from every photo carrying them. */
+/** Delete the subtree and strip its keywords from every photo carrying them.
+*  Resolves to a message when the photo write failed and the tree was kept. */
 async function deleteNodeAction(key) {
 	const { roots } = kw.getState();
+	const snapshot = structuredClone(roots);
 	const names = removeSubtree(roots, key);
-	if (names.length === 0) return;
+	if (names.length === 0) return null;
 	const keys = new Set(names.map(keyOf));
 	const { ids, variants } = occurrences(keys);
-	if (ids.length > 0) await api.stores.useCatalogStore.getState().removeKeywords(ids, variants);
+	if (ids.length > 0) try {
+		await api.stores.useCatalogStore.getState().removeKeywords(ids, variants);
+	} catch (err) {
+		restoreTree(snapshot);
+		return `Couldn't delete "${names[0]}": ${String(err)}`;
+	}
 	kw.setState((s) => ({
 		filterKeys: s.filterKeys.filter((k) => !keys.has(k)),
 		expanded: s.expanded.filter((k) => !keys.has(k)),
@@ -588,6 +634,7 @@ async function deleteNodeAction(key) {
 	persistTree();
 	persistPanelUi();
 	bump();
+	return null;
 }
 function moveNodeAction(key, newParentKey) {
 	const moved = moveNode(kw.getState().roots, key, newParentKey);
@@ -795,7 +842,7 @@ function useTargetPhotos() {
 		activeId
 	]);
 }
-/** keyword key → catalog-wide photo count (+ a display spelling seen on
+/** keyword key → catalogue-wide photo count (+ a display spelling seen on
 *  photos). Rebuilt only when the photos array identity changes. */
 function useKeywordCounts() {
 	const photos = api.stores.useCatalogStore((s) => s.photos);
@@ -1110,7 +1157,10 @@ function NodeEditor({ data, armDelete, onNotice, onClose }) {
 		variant: "danger",
 		size: "sm",
 		onClick: () => {
-			deleteNodeAction(key).then(onClose);
+			deleteNodeAction(key).then((message) => {
+				if (message) onNotice(message);
+				onClose();
+			});
 		}
 	}, "Delete"), /* @__PURE__ */ React.createElement(ui.Button, {
 		variant: "ghost",
@@ -1402,6 +1452,7 @@ function KeywordTreePanel() {
 	const editingKey = kw((s) => s.editingKey);
 	const targets = useTargetPhotos();
 	const counts = useKeywordCounts();
+	const targetCounts = React.useMemo(() => targetKeyCounts(targets), [targets]);
 	const [notice, setNotice] = React.useState(null);
 	const [search, setSearch] = React.useState("");
 	const [renamingKey, setRenamingKey] = React.useState(null);
@@ -1618,7 +1669,7 @@ function KeywordTreePanel() {
 		data,
 		hasChildren,
 		expanded: isExpanded,
-		checkState: checkStateFor(data.key, targets),
+		checkState: checkStateOf(targetCounts.get(data.key) ?? 0, targets.length),
 		count: counts.get(data.key)?.count ?? 0,
 		deepCount: deepCounts.get(data.key) ?? 0,
 		filterActive: filterKeys.includes(data.key),
@@ -1640,7 +1691,7 @@ function KeywordTreePanel() {
 		color: ui.tokens.textMuted,
 		padding: "4px 0"
 	} }, "No keywords match \"", search, "\"")), unfiled.length > 0 && /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", {
-		title: "Keywords on photos in this catalog that aren't in your tree yet",
+		title: "Keywords on photos in this catalogue that aren't in your tree yet",
 		style: {
 			fontSize: 10,
 			textTransform: "uppercase",
@@ -1658,7 +1709,7 @@ function KeywordTreePanel() {
 		},
 		hasChildren: false,
 		expanded: false,
-		checkState: checkStateFor(key, targets),
+		checkState: checkStateOf(targetCounts.get(key) ?? 0, targets.length),
 		count,
 		deepCount: count,
 		filterActive: filterKeys.includes(key),
@@ -1684,7 +1735,7 @@ function KeywordTreePanel() {
 	}, "Import…"), /* @__PURE__ */ React.createElement(ui.Button, {
 		variant: "ghost",
 		size: "sm",
-		title: "Export the tree as a Lightroom keyword list",
+		title: "Export the tree as a Lightroom keyword list (.txt)",
 		onClick: onExport
 	}, "Export")))), /* @__PURE__ */ React.createElement("input", {
 		ref: fileRef,
@@ -1776,7 +1827,7 @@ function activate(api) {
 		fields: [{
 			key: SETTING_TAG_ANCESTORS,
 			label: "Also tag ancestor keywords on photos",
-			hint: "Applying \"Eagle\" under Animals > Birds writes all three keywords onto the photo. Keeps full hierarchy visible to apps that only read flat keywords; off matches Lightroom, which implies parents instead.",
+			hint: "Applying \"Eagle\" under Animals > Birds writes all three keywords onto the photo. Keeps the full hierarchy visible to apps that only read flat keywords; when off, parents stay implied by the tree.",
 			type: "boolean",
 			default: false
 		}]

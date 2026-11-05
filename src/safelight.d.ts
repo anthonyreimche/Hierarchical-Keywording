@@ -5,7 +5,7 @@
 
 import type { ComponentType, CSSProperties, ReactNode } from "react";
 
-// ── catalog model ────────────────────────────────────────────────────────────
+// ── catalogue model ────────────────────────────────────────────────────────────
 
 export interface CatalogPhoto {
   id: string;
