@@ -41,6 +41,8 @@ export function activate(api: SafelightAPI): void {
     api.registerGridFilter({
       id: FILTER_ID,
       test: predicate ?? (() => true),
+      // The Library filters again only for the fields named here.
+      reads: predicate ? ["keywords"] : [],
       onClear: clearFilter,
     });
   };
