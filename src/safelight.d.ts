@@ -3,7 +3,7 @@
 // (src/extensions/types.ts, src/catalog/types.ts); this file mirrors only what
 // we touch so the bundle type-checks standalone without depending on core.
 
-import type { ComponentType, CSSProperties, ReactNode } from "react";
+import type { ComponentType, CSSProperties, JSX, ReactNode } from "react";
 
 // ── catalogue model ────────────────────────────────────────────────────────────
 
@@ -170,6 +170,24 @@ export interface UiKit {
   tokens: Record<string, string>;
 }
 
+export interface ContextMenuItem {
+  label: string;
+  onClick: () => void;
+  /** Render in the red danger colour (e.g. Remove). */
+  danger?: boolean;
+  disabled?: boolean;
+}
+
+/** A horizontal divider between groups of items. */
+export type ContextMenuEntry = ContextMenuItem | "separator";
+
+export interface ContextMenuProps {
+  x: number;
+  y: number;
+  items: ContextMenuEntry[];
+  onClose: () => void;
+}
+
 // ── the scoped API object handed to activate() ───────────────────────────────
 
 export interface SafelightAPI {
@@ -188,6 +206,12 @@ export interface SafelightAPI {
     onChange(cb: (key: string, value: unknown) => void): () => void;
   };
   ui: UiKit;
+  components: {
+    /** The right-click menu core surfaces use, placed at client `x`/`y` and
+     *  kept in the viewport. Closes on an outside click, Escape, scroll, or
+     *  choosing an item. */
+    ContextMenu: (props: ContextMenuProps) => JSX.Element;
+  };
   stores: {
     useCatalogStore: StoreHook<CatalogState>;
     create<T>(initializer: StateCreator<T>): StoreHook<T>;

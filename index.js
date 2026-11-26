@@ -1363,84 +1363,26 @@ function RenameInput({ data, onDone, onNotice }) {
 }
 //#endregion
 //#region src/ui/menu.tsx
-function uiZoom() {
-	if (typeof getComputedStyle !== "function") return 1;
-	const raw = getComputedStyle(document.body).zoom;
-	const zoom = parseFloat(raw ?? "1");
-	return Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
-}
 function useMenu() {
 	const [open, setOpen] = React.useState(null);
 	const openMenu = React.useCallback((e, items) => {
-		const zoom = uiZoom();
 		setOpen({
-			x: e.clientX / zoom,
-			y: e.clientY / zoom,
+			x: e.clientX,
+			y: e.clientY,
 			items
 		});
 	}, []);
-	React.useEffect(() => {
-		if (!open) return;
-		const onKey = (e) => {
-			if (e.key === "Escape") setOpen(null);
-		};
-		window.addEventListener("keydown", onKey);
-		return () => window.removeEventListener("keydown", onKey);
-	}, [open]);
+	const close = React.useCallback(() => setOpen(null), []);
+	const { ContextMenu } = api.components;
 	return {
-		menu: !open ? null : /* @__PURE__ */ React.createElement("div", {
-			style: {
-				position: "fixed",
-				inset: 0,
-				zIndex: 60
-			},
-			onClick: () => setOpen(null),
-			onContextMenu: (e) => {
-				e.preventDefault();
-				setOpen(null);
-			}
-		}, /* @__PURE__ */ React.createElement("div", {
-			style: {
-				position: "fixed",
-				left: open.x,
-				top: open.y,
-				minWidth: 160,
-				padding: 4,
-				background: ui.tokens.surface1,
-				border: `1px solid ${ui.tokens.border}`,
-				borderRadius: 6,
-				boxShadow: "0 6px 20px rgba(0,0,0,0.35)"
-			},
-			onClick: (e) => e.stopPropagation()
-		}, open.items.map((item) => /* @__PURE__ */ React.createElement(MenuRow, {
-			key: item.label,
-			item,
-			close: () => setOpen(null)
-		})))),
+		menu: open ? /* @__PURE__ */ React.createElement(ContextMenu, {
+			x: open.x,
+			y: open.y,
+			items: open.items,
+			onClose: close
+		}) : null,
 		openMenu
 	};
-}
-function MenuRow({ item, close }) {
-	const [hover, setHover] = React.useState(false);
-	return /* @__PURE__ */ React.createElement("div", {
-		onMouseEnter: () => setHover(true),
-		onMouseLeave: () => setHover(false),
-		onClick: () => {
-			if (item.disabled) return;
-			close();
-			item.onClick();
-		},
-		style: {
-			padding: "5px 10px",
-			borderRadius: 4,
-			fontSize: 12,
-			cursor: item.disabled ? "default" : "pointer",
-			opacity: item.disabled ? .45 : 1,
-			color: item.danger ? "#e5484d" : ui.tokens.textPrimary,
-			background: hover && !item.disabled ? ui.tokens.surface2 : "transparent",
-			userSelect: "none"
-		}
-	}, item.label);
 }
 //#endregion
 //#region src/ui/KeywordTreePanel.tsx
@@ -1773,6 +1715,7 @@ function activate(api) {
 		api.registerGridFilter({
 			id: FILTER_ID,
 			test: predicate ?? (() => true),
+			reads: predicate ? ["keywords"] : [],
 			onClear: clearFilter
 		});
 	};

@@ -27,7 +27,8 @@ import { EntryField, type Notice } from "./EntryField.tsx";
 import { NodeEditor } from "./NodeEditor.tsx";
 import { DND_KEYWORD, TreeRow, type RowData } from "./TreeRow.tsx";
 import { useKeywordCounts, useTargetPhotos } from "./hooks.ts";
-import { useMenu, type MenuItem } from "./menu.tsx";
+import { useMenu } from "./menu.tsx";
+import type { ContextMenuItem } from "../safelight";
 
 const NOTICE_MS = 6000;
 
@@ -126,7 +127,7 @@ export function KeywordTreePanel(): ReactElement {
       .map(([key, { display, count }]) => ({ key, display, count }));
   }, [revision, counts]);
 
-  const menuFor = (data: RowData, isUnfiled: boolean): MenuItem[] => {
+  const menuFor = (data: RowData, isUnfiled: boolean): ContextMenuItem[] => {
     const name = data.node.name;
     const haveTargets = targetIds().length > 0;
     if (isUnfiled) {
